@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # repo-local setup: venv, env, run-sync.sh (in-repo), symlink for Termux widget
@@ -10,84 +10,239 @@ TEMPLATE="$REPO_DIR/termux_shortcuts/run-sync.sh.template"
 RUN_SH="$REPO_DIR/run-sync.sh"
 REQ_FILE="$REPO_DIR/requirements.txt"
 
-echo "=== Setup (repo-local mode) ==="
-echo "Repo: $REPO_DIR"
+echo "=== Dropbox Mirror Setup (repo-local mode) ==="
+echo "Repository: $REPO_DIR"
+echo
 
-# 1) create virtual env inside repo
+# Check if running in Termux
+if [[ ! "${PREFIX:-}" == *"com.termux"* ]]; then
+    echo "⚠️  Warning: This script is designed for Termux. Some features may not work correctly."
+    read -p "Continue anyway? (y/N): " resp
+    if [[ ! "$resp" =~ ^[Yy]$ ]]; then
+        echo "Setup cancelled."
+        exit 1
+    fi
+fi
+
+# 1) Create virtual environment inside repo
+echo "[1/5] Setting up Python virtual environment..."
 if [ -d "$VENV_DIR" ]; then
-  echo "Found existing venv at $VENV_DIR"
-  read -p "Recreate venv and reinstall packages? (y/N): " resp
-  if [[ "$resp" =~ ^[Yy]$ ]]; then
-    rm -rf "$VENV_DIR"
-  fi
+    echo "Found existing virtual environment at: $VENV_DIR"
+    read -p "Recreate virtual environment and reinstall packages? (y/N): " resp
+    if [[ "$resp" =~ ^[Yy]$ ]]; then
+        echo "Removing existing virtual environment..."
+        rm -rf "$VENV_DIR"
+    fi
 fi
+
 if [ ! -d "$VENV_DIR" ]; then
-  python3 -m venv "$VENV_DIR"
-  echo "Created venv at $VENV_DIR"
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "❌ ERROR: python3 not found. Install it with: pkg install python"
+        exit 1
+    fi
+    
+    echo "Creating Python virtual environment..."
+    python3 -m venv "$VENV_DIR"
+    echo "✅ Virtual environment created at: $VENV_DIR"
 fi
 
-# 2) install requirements into venv
-echo "Installing requirements into venv..."
-"$VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null 2>&1 || true
-"$VENV_DIR/bin/pip" install -r "$REQ_FILE"
-
-# 3) interactive .env inside repo (if missing)
-if [ -f "$ENV_FILE" ]; then
-  echo "Found existing config: $ENV_FILE"
-else
-  echo "Creating config $ENV_FILE (interactive)."
-  read -p "Dropbox public URL (must end with ?dl=1): " DROPBOX_URL
-  if [ -z "$DROPBOX_URL" ]; then
-    echo "Dropbox URL is required. Exiting."
+# 2) Install requirements into virtual environment
+echo "[2/5] Installing Python dependencies..."
+if [ ! -f "$REQ_FILE" ]; then
+    echo "❌ ERROR: requirements.txt not found at: $REQ_FILE"
     exit 1
-  fi
-  DEFAULT_DL="$REPO_DIR/dropbox_latest.zip"
-  read -p "Local download path for ZIP [$DEFAULT_DL]: " DOWNLOAD_PATH
-  DOWNLOAD_PATH="${DOWNLOAD_PATH:-$DEFAULT_DL}"
-  DEFAULT_TARGET="$REPO_DIR/DropboxMirror"
-  read -p "Target folder to store files [$DEFAULT_TARGET]: " TARGET_DIR
-  TARGET_DIR="${TARGET_DIR:-$DEFAULT_TARGET}"
-  read -p "Keep old versions when overwriting? (yes/no) [yes]: " KEEP_V
-  KEEP_V="${KEEP_V:-yes}"
-  read -p "Enable dry-run by default? (no = actually write) (yes/no) [no]: " DRY
-  DRY="${DRY:-no}"
+fi
 
-  cat > "$ENV_FILE" <<EOF
+echo "Upgrading pip..."
+if ! "$VENV_DIR/bin/python" -m pip install --upgrade pip --quiet; then
+    echo "⚠️  Warning: pip upgrade failed, continuing anyway..."
+fi
+
+echo "Installing requirements from: $REQ_FILE"
+if ! "$VENV_DIR/bin/pip" install -r "$REQ_FILE" --quiet; then
+    echo "❌ ERROR: Failed to install Python dependencies"
+    echo "Try running: $VENV_DIR/bin/pip install -r $REQ_FILE"
+    exit 1
+fi
+echo "✅ Dependencies installed successfully"
+
+# 3) Interactive configuration inside repo (if missing)
+echo "[3/5] Setting up configuration..."
+if [ -f "$ENV_FILE" ]; then
+    echo "Found existing configuration: $ENV_FILE"
+    read -p "Recreate configuration file? (y/N): " resp
+    if [[ ! "$resp" =~ ^[Yy]$ ]]; then
+        echo "Using existing configuration"
+    else
+        rm -f "$ENV_FILE"
+    fi
+fi
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo
+    echo "🔧 Interactive Configuration Setup"
+    echo "Creating configuration file: $ENV_FILE"
+    echo
+    
+    # Get Dropbox URL with validation
+    while true; do
+        read -p "Dropbox public URL (must end with ?dl=1): " DROPBOX_URL
+        if [ -z "$DROPBOX_URL" ]; then
+            echo "❌ ERROR: Dropbox URL is required"
+            continue
+        fi
+        if [[ "$DROPBOX_URL" != *"?dl=1" ]]; then
+            echo "❌ ERROR: URL must end with '?dl=1'"
+            echo "   Example: https://www.dropbox.com/s/abc123/folder.zip?dl=1"
+            continue
+        fi
+        break
+    done
+    
+    # Get download path
+    DEFAULT_DL="$REPO_DIR/dropbox_latest.zip"
+    read -p "Local download path for ZIP [$DEFAULT_DL]: " DOWNLOAD_PATH
+    DOWNLOAD_PATH="${DOWNLOAD_PATH:-$DEFAULT_DL}"
+    
+    # Get target directory
+    DEFAULT_TARGET="$REPO_DIR/DropboxMirror"
+    echo
+    echo "Target directory options:"
+    echo "  • Repo folder (default): $DEFAULT_TARGET"
+    echo "  • External storage: ~/storage/shared/Documents/MyDropbox"
+    echo "  • Custom path: /path/to/your/folder"
+    read -p "Target folder to store synced files [$DEFAULT_TARGET]: " TARGET_DIR
+    TARGET_DIR="${TARGET_DIR:-$DEFAULT_TARGET}"
+    
+    # Get other settings
+    read -p "Keep old file versions when overwriting? (yes/no) [yes]: " KEEP_V
+    KEEP_V="${KEEP_V:-yes}"
+    
+    read -p "Enable dry-run mode by default? (yes/no) [no]: " DRY
+    DRY="${DRY:-no}"
+    
+    # Optional: Custom log path
+    DEFAULT_LOG="$REPO_DIR/sync_dropbox.log"
+    read -p "Log file path [$DEFAULT_LOG]: " LOG_PATH
+    LOG_PATH="${LOG_PATH:-$DEFAULT_LOG}"
+
+    # Write configuration file
+    cat > "$ENV_FILE" <<EOF
+# Dropbox Mirror Configuration
+# Generated by setup_termux.sh on $(date)
+
 DROPBOX_URL=$DROPBOX_URL
 DOWNLOAD_PATH=$DOWNLOAD_PATH
 TARGET_DIR=$TARGET_DIR
 KEEP_VERSIONS=$KEEP_V
 DRY_RUN=$DRY
-LOG_PATH=$REPO_DIR/sync_dropbox.log
+LOG_PATH=$LOG_PATH
 VENV_DIR=$VENV_DIR
 EOF
 
-  echo "Wrote $ENV_FILE"
+    echo
+    echo "✅ Configuration written to: $ENV_FILE"
+    echo
 fi
 
-# 4) render run-sync.sh into repo (executable)
+# 4) Create run script from template
+echo "[4/5] Creating run script..."
+if [ ! -f "$TEMPLATE" ]; then
+    echo "❌ ERROR: Template not found at: $TEMPLATE"
+    exit 1
+fi
+
+# Render template with actual paths
 sed "s|__VENV_DIR__|$VENV_DIR|g; s|__SCRIPT_PATH__|$REPO_DIR/sync_dropbox.py|g; s|__LOG_PATH__|$REPO_DIR/sync_dropbox.log|g" "$TEMPLATE" > "$RUN_SH"
 chmod +x "$RUN_SH"
-echo "Created run script at $RUN_SH"
+echo "✅ Created executable run script: $RUN_SH"
 
-# 5) create symlink in ~/.shortcuts pointing to repo run script
+# 5) Create Termux widget shortcut
+echo "[5/5] Setting up Termux widget shortcut..."
 mkdir -p "$HOME/.shortcuts"
-# remove existing link if it's ours
-if [ -L "$SHORTCUT_LINK" ] || [ -f "$SHORTCUT_LINK" ]; then
-  read -p "Overwrite existing $SHORTCUT_LINK? (y/N): " resp
-  if [[ "$resp" =~ ^[Yy]$ ]]; then
-    rm -f "$SHORTCUT_LINK"
-  else
-    echo "Keeping existing $SHORTCUT_LINK"
-  fi
-fi
-ln -s "$RUN_SH" "$SHORTCUT_LINK" || { echo "Could not create symlink. Creating a small wrapper instead."; printf '#!/data/data/com.termux/files/usr/bin/env bash\n'"$VENV_DIR/bin/python $REPO_DIR/sync_dropbox.py >> $REPO_DIR/sync_dropbox.log 2>&1\n" > "$SHORTCUT_LINK"; chmod +x "$SHORTCUT_LINK"; }
-echo "Installed shortcut at $SHORTCUT_LINK (symlink or wrapper)"
 
+# Handle existing shortcut
+if [ -L "$SHORTCUT_LINK" ] || [ -f "$SHORTCUT_LINK" ]; then
+    echo "Found existing shortcut: $SHORTCUT_LINK"
+    read -p "Overwrite existing widget shortcut? (y/N): " resp
+    if [[ "$resp" =~ ^[Yy]$ ]]; then
+        rm -f "$SHORTCUT_LINK"
+    else
+        echo "Keeping existing shortcut"
+        echo
+        echo "⚠️  Setup completed but widget shortcut not updated"
+        echo "   Manual test: $RUN_SH"
+        echo "   Edit config: $ENV_FILE"
+        exit 0
+    fi
+fi
+
+# Try to create symlink, fallback to wrapper script
+if ln -s "$RUN_SH" "$SHORTCUT_LINK" 2>/dev/null; then
+    echo "✅ Created widget symlink: $SHORTCUT_LINK"
+else
+    echo "Creating wrapper script for widget..."
+    cat > "$SHORTCUT_LINK" <<EOF
+#!/usr/bin/env bash
+# Termux widget wrapper for Dropbox Mirror
+export TERMUX_WIDGET=1
+cd "$REPO_DIR" || exit 1
+"$VENV_DIR/bin/python" "$REPO_DIR/sync_dropbox.py" >> "$REPO_DIR/sync_dropbox.log" 2>&1
+EOF
+    chmod +x "$SHORTCUT_LINK"
+    echo "✅ Created widget wrapper: $SHORTCUT_LINK"
+fi
+
+# Verify setup
 echo
-echo "Done. Use Termux:Widget and select 'run-sync' to trigger."
-echo "All runtime files are inside the repo. To remove everything later run ./remove_installation.sh"
-echo "To run manually: $RUN_SH"
-echo "To edit config: $ENV_FILE"
-echo "To uninstall: ./remove_installation.sh"
-echo "=============================="
+echo "🔍 Verifying setup..."
+
+# Check if Python script exists
+if [ ! -f "$REPO_DIR/sync_dropbox.py" ]; then
+    echo "❌ ERROR: sync_dropbox.py not found in repo"
+    exit 1
+fi
+
+# Check if venv Python works
+if ! "$VENV_DIR/bin/python" --version >/dev/null 2>&1; then
+    echo "❌ ERROR: Virtual environment Python not working"
+    exit 1
+fi
+
+# Check if requests is available
+if ! "$VENV_DIR/bin/python" -c "import requests" 2>/dev/null; then
+    echo "❌ ERROR: requests library not available in venv"
+    exit 1
+fi
+
+echo "✅ All components verified successfully"
+
+# Final summary
+echo
+echo "🎉 === Setup Complete ==="
+echo
+echo "📁 Installation Summary:"
+echo "   Virtual environment: $VENV_DIR"
+echo "   Configuration file:  $ENV_FILE"  
+echo "   Run script:          $RUN_SH"
+echo "   Widget shortcut:     $SHORTCUT_LINK"
+echo
+echo "📱 Next Steps:"
+echo "   1. Install Termux:Widget from F-Droid (if not installed)"
+echo "   2. Add Termux widget to your home screen"
+echo "   3. Select 'run-sync' from the widget list"
+echo "   4. Tap widget to trigger sync!"
+echo
+echo "🔧 Manual Usage:"
+echo "   Test run:       $RUN_SH"
+echo "   Dry run:        ./.venv/bin/python ./sync_dropbox.py --dry-run"
+echo "   Edit config:    nano $ENV_FILE"
+echo "   View logs:      tail -f $REPO_DIR/sync_dropbox.log"
+echo "   Uninstall:      ./remove_installation.sh"
+echo
+echo "📋 Troubleshooting:"
+echo "   • Check logs for errors: tail -f $REPO_DIR/sync_dropbox.log"
+echo "   • Verify storage permissions: termux-setup-storage"
+echo "   • Ensure Dropbox URL ends with '?dl=1'"
+echo "   • Test manually before using widget"
+echo "=================================="
