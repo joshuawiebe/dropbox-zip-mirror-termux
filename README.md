@@ -63,7 +63,7 @@ DOWNLOAD_PATH=./dropbox_latest.zip
 TARGET_DIR=./DropboxMirror
 KEEP_VERSIONS=yes
 DRY_RUN=no
-LOG_PATH=./sync_dropbox.log
+LOG_PATH=./sync.log
 VENV_DIR=./.venv
 ```
 
@@ -74,7 +74,7 @@ VENV_DIR=./.venv
 - `TARGET_DIR` — Where to sync files to (default: `./DropboxMirror`)
 - `KEEP_VERSIONS` — Archive replaced files in `TARGET_DIR/.old_versions` (`yes`/`no`)
 - `DRY_RUN` — Simulate changes without writing (`yes`/`no`)
-- `LOG_PATH` — Path to log file (default: `./sync_dropbox.log`)
+- `LOG_PATH` — Path to log file (default: `./sync.log`)
 - `VENV_DIR` — Python virtual environment path (default: `./.venv`)
 
 Edit manually: `nano ./.dropbox_mirror.env` or re-run `bash setup_termux.sh`
@@ -114,13 +114,13 @@ Remove all runtime artifacts (keeps your synced files):
 
 ```bash
 # Watch live sync
-tail -f ./sync_dropbox.log
+tail -f ./sync.log
 
 # Check last sync
-tail -20 ./sync_dropbox.log
+tail -20 ./sync.log
 
 # View sync history
-grep "SUMMARY" ./sync_dropbox.log
+grep "SUMMARY" ./sync.log
 ```
 
 ## Troubleshooting
@@ -130,7 +130,7 @@ grep "SUMMARY" ./sync_dropbox.log
 - Ensure `~/.shortcuts/run-sync.sh` exists and is executable
 - Check Termux:Widget is installed from F-Droid
 - Verify config file exists: `./.dropbox_mirror.env`
-- Check logs: `tail -f ./sync_dropbox.log`
+- Check logs: `tail -f ./sync.log`
 
 ### Permission errors
 
@@ -175,7 +175,7 @@ dropbox-zip-mirror-termux/
 │   └── run-sync.sh.template  # Widget script template
 ├── .dropbox_mirror.env       # Config (created by setup)
 ├── .venv/                    # Python venv (created by setup)
-├── sync_dropbox.log          # Log file (created at runtime)
+├── sync.log          # Log file (created at runtime)
 └── DropboxMirror/           # Default sync target (created at runtime)
 ```
 

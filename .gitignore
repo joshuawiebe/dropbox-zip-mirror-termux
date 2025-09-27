@@ -3,7 +3,7 @@
 .venv/                 # if you create venv inside repo (optional)
 __pycache__/           # if you create __pycache__ inside repo (optional)
 *.pyc                  # if you create pyc files inside repo (optional)
-sync_dropbox.log       # if you create log file inside repo (optional)
+sync.log               # single unified log
 dropbox_latest.zip     # if you download zip inside repo (optional)
 run-sync.sh            # if you don't want repo-run script in git (optional)
 DropboxMirror/         # default target folder inside repo (optional)

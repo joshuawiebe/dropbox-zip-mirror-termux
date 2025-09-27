@@ -256,7 +256,7 @@ def main():
         cfg["KEEP_VERSIONS"] = ask("Keep old versions? (yes/no)", "yes")
         cfg["DRY_RUN"] = ask("Dry run? (yes/no)", "no")
         cfg["LOG_PATH"] = ask("Log file path", 
-                             str(script_dir / "sync_dropbox.log"))
+                             str(script_dir / "sync.log"))
         
         # Save config
         try:
@@ -273,7 +273,7 @@ def main():
     target_dir = cfg.get("TARGET_DIR", str(script_dir / "DropboxMirror"))
     keep_versions = cfg.get("KEEP_VERSIONS", "yes").lower().startswith("y")
     dry_run = cfg.get("DRY_RUN", "no").lower().startswith("y")
-    log_path = cfg.get("LOG_PATH", str(script_dir / "sync_dropbox.log"))
+    log_path = cfg.get("LOG_PATH", str(script_dir / "sync.log"))
 
     # Allow CLI flags: --dry-run
     if len(sys.argv) > 1:
@@ -281,10 +281,16 @@ def main():
             dry_run = True
             print("[+] Dry run mode enabled via CLI flag")
 
-    # Validate URL
-    if not url or not url.endswith("?dl=1"):
-        print("ERROR: DROPBOX_URL must end with '?dl=1'")
+    # Normalize and validate URL
+    if not url or "dropbox.com" not in url:
+        print("ERROR: DROPBOX_URL missing or not a Dropbox link")
         return 1
+    # Force dl=1 for public download links
+    url = url.replace("&dl=0", "").replace("&dl=1", "").replace("?dl=0", "").replace("?dl=1", "")
+    if "?" in url:
+        url = url + "&dl=1"
+    else:
+        url = url + "?dl=1"
 
     # Expand paths
     download_path = expand_path(download_path)
@@ -364,13 +370,6 @@ def main():
     except Exception as e:
         print(f"ERROR: Could not write to log file {log_path}: {e}")
         return 3
-
-    # Send notification if available
-    try:
-        if shutil.which("termux-notification"):
-            os.system(f'termux-notification --title "Dropbox Mirror" --content "Sync finished. Check {log_path}" --priority high')
-    except Exception:
-        pass
 
     print("[+] Dropbox Mirror sync completed successfully")
     return 0

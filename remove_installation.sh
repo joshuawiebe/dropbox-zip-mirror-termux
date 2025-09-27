@@ -6,7 +6,7 @@ VENV_DIR="$REPO_DIR/.venv"
 ENV_FILE="$REPO_DIR/.dropbox_mirror.env"
 SHORTCUT_LINK="$HOME/.shortcuts/run-sync.sh"
 RUN_SH="$REPO_DIR/run-sync.sh"
-LOG_FILE="$REPO_DIR/sync_dropbox.log"
+LOG_FILE="$REPO_DIR/sync.log"
 ZIP_FILE="$REPO_DIR/dropbox_latest.zip"
 TARGET_DIR_DEFAULT="$REPO_DIR/DropboxMirror"
 
@@ -71,23 +71,23 @@ fi
 
 # Show what will be removed
 echo "Files to be removed:"
-echo " ✓ Virtual environment: $VENV_DIR"
-echo " ✓ Configuration file: $ENV_FILE"
-echo " ✓ Run script: $RUN_SH"
-echo " ✓ Widget shortcut: $SHORTCUT_LINK"
+echo " â Virtual environment: $VENV_DIR"
+echo " â Configuration file: $ENV_FILE"
+echo " â Run script: $RUN_SH"
+echo " â Widget shortcut: $SHORTCUT_LINK"
 
 if [ -f "$LOG_FILE" ]; then
-    echo " ✓ Default log file: $LOG_FILE"
+    echo " â Default log file: $LOG_FILE"
 fi
 if [ -n "$CUSTOM_LOG_PATH" ] && [ "$CUSTOM_LOG_PATH" != "$LOG_FILE" ] && [ -f "$CUSTOM_LOG_PATH" ]; then
-    echo " ✓ Custom log file: $CUSTOM_LOG_PATH"
+    echo " â Custom log file: $CUSTOM_LOG_PATH"
 fi
 
 if [ -f "$ZIP_FILE" ]; then
-    echo " ✓ Default ZIP file: $ZIP_FILE"
+    echo " â Default ZIP file: $ZIP_FILE"
 fi
 if [ -n "$CUSTOM_DOWNLOAD_PATH" ] && [ "$CUSTOM_DOWNLOAD_PATH" != "$ZIP_FILE" ] && [ -f "$CUSTOM_DOWNLOAD_PATH" ]; then
-    echo " ✓ Custom ZIP file: $CUSTOM_DOWNLOAD_PATH"
+    echo " â Custom ZIP file: $CUSTOM_DOWNLOAD_PATH"
 fi
 
 if [ -d "$TARGET_DIR_DEFAULT" ]; then
@@ -192,11 +192,11 @@ fi
 
 echo
 echo "=== Cleanup Complete ==="
-echo "✅ All runtime files have been removed"
+echo "â All runtime files have been removed"
 echo
 echo "Repository folder is still here: $REPO_DIR"
 echo "You can:"
-echo "  • Remove entire repo:  rm -rf '$REPO_DIR'"
-echo "  • Reinstall:          bash setup_termux.sh"
-echo "  • Clone fresh:        git pull && bash setup_termux.sh"
+echo "  â¢ Remove entire repo:  rm -rf '$REPO_DIR'"
+echo "  â¢ Reinstall:          bash setup_termux.sh"
+echo "  â¢ Clone fresh:        git pull && bash setup_termux.sh"
 echo "=================================="
