@@ -1,0 +1,15 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+# run-sync.sh.template
+# Template for Termux widget script. setup_termux.sh will replace placeholders.
+VENV="__VENV_DIR__"
+PY="$VENV/bin/python"
+SCRIPT="__SCRIPT_PATH__"
+LOG="$HOME/sync_dropbox.log"
+
+# Execute the script using venv python; append output to log
+"$PY" "$SCRIPT" >> "$LOG" 2>&1
+
+# Send a simple notification if termux-notification is available
+if command -v termux-notification >/dev/null 2>&1; then
+  termux-notification --title "Dropbox Mirror" --content "Sync finished. See $LOG" --priority high
+fi

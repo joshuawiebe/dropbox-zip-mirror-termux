@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.dropbox_mirror.env
+sync_dropbox.log
+.dropbox_mirror_venv/
+.env
