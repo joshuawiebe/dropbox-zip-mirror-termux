@@ -84,18 +84,29 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "Creating configuration file: $ENV_FILE"
     echo
     
-    # Get Dropbox URL with validation
+    # Get Dropbox URL and normalize to ?dl=1
     while true; do
-        read -p "Dropbox public URL (must end with ?dl=1): " DROPBOX_URL
+        read -p "Dropbox public URL: " DROPBOX_URL
         if [ -z "$DROPBOX_URL" ]; then
             echo "❌ ERROR: Dropbox URL is required"
             continue
         fi
-        if [[ "$DROPBOX_URL" != *"?dl=1" ]]; then
-            echo "❌ ERROR: URL must end with '?dl=1'"
-            echo "   Example: https://www.dropbox.com/s/abc123/folder.zip?dl=1"
+
+        if [[ "$DROPBOX_URL" != *"dropbox.com"* ]]; then
+            echo "❌ ERROR: Not a Dropbox URL"
             continue
         fi
+
+        # Remove any existing dl=0/dl=1 and add dl=1
+        DROPBOX_URL="${DROPBOX_URL/&dl=0/}"
+        DROPBOX_URL="${DROPBOX_URL/&dl=1/}"
+        if [[ "$DROPBOX_URL" == *\?* ]]; then
+            DROPBOX_URL="$DROPBOX_URL&dl=1"
+        else
+            DROPBOX_URL="$DROPBOX_URL?dl=1"
+        fi
+
+        echo "✅ Using Dropbox URL: $DROPBOX_URL"
         break
     done
     
