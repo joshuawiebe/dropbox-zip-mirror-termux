@@ -1,26 +1,55 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$REPO_DIR"
+# directory of this script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-LOG_FILE="$REPO_DIR/sync.log"
-ENV_FILE="$REPO_DIR/.dropbox_mirror.env"
-PYTHON="$REPO_DIR/.venv/bin/python"
+# assume repo root is one level up from termux_shortcuts
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# fallbacks: look for venv in repo root or in repo root/dropbox_mirror_venv
+CANDIDATE_PYTHON="$REPO_ROOT/.venv/bin/python"
+if [ ! -x "$CANDIDATE_PYTHON" ]; then
+    CANDIDATE_PYTHON="$REPO_ROOT/dropbox_mirror_venv/bin/python"
+fi
+# as a last resort use system python in PATH
+if [ ! -x "$CANDIDATE_PYTHON" ]; then
+    if command -v python3 >/dev/null 2>&1; then
+        CANDIDATE_PYTHON="$(command -v python3)"
+    elif command -v python >/dev/null 2>&1; then
+        CANDIDATE_PYTHON="$(command -v python)"
+    else
+        CANDIDATE_PYTHON=""
+    fi
+fi
+
+PYTHON="$CANDIDATE_PYTHON"
+LOG_FILE="$REPO_ROOT/sync.log"
+ENV_FILE="$REPO_ROOT/.dropbox_mirror.env"
 
 echo "=== Dropbox Mirror Sync ==="
 date
 
 if [ ! -f "$ENV_FILE" ]; then
     echo "❌ ERROR: Missing config file: $ENV_FILE"
-    echo "Run ./setup_termux.sh first!"
+    echo "Run ./setup_termux.sh from the repo root first!"
+    exit 1
+fi
+
+if [ -z "$PYTHON" ]; then
+    echo "❌ ERROR: No python executable found. Create a virtualenv at $REPO_ROOT/.venv or ensure python3 is in PATH."
+    exit 1
+fi
+
+if [ ! -x "$PYTHON" ]; then
+    echo "❌ ERROR: Python executable is not usable: $PYTHON"
     exit 1
 fi
 
 # Run sync and capture logs
 {
     echo "[$(date)] Starting sync..."
-    "$PYTHON" sync_dropbox.py
+    "$PYTHON" "$REPO_ROOT/sync_dropbox.py"
     echo "[$(date)] ✅ Sync completed successfully"
 } >>"$LOG_FILE" 2>&1 || {
     echo "[$(date)] ❌ Sync failed" >>"$LOG_FILE"

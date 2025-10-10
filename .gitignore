@@ -1,11 +1,11 @@
 # runtime / user files (keep inside repo, but ignore)
-.dropbox_mirror.env    # if you create env file inside repo (optional)
-.venv/                 # if you create venv inside repo (optional)
-__pycache__/           # if you create __pycache__ inside repo (optional)
-*.pyc                  # if you create pyc files inside repo (optional)
-sync.log               # single unified log
-dropbox_latest.zip     # if you download zip inside repo (optional)
-run-sync.sh            # if you don't want repo-run script in git (optional)
-DropboxMirror/         # default target folder inside repo (optional)
-dropbox_mirror_venv/   # if you create venv inside repo (optional)
-.env                   # if you create env file inside repo (optional)
+.dropbox_mirror.env
+.venv/
+__pycache__/
+*.pyc
+sync.log
+dropbox_latest.zip
+run-sync.sh
+DropboxMirror/
+dropbox_mirror_venv/
+.env
