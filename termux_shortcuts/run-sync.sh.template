@@ -1,52 +1,54 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
-# directory of this script
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# === Dropbox Mirror Sync Script ===
+# Works both as standalone script and as Termux shortcut.
 
-# assume repo root is one level up from termux_shortcuts
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# --- Detect repo root automatically ---
+SCRIPT_PATH="$(realpath "$0")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 
-# fallbacks: look for venv in repo root or in repo root/dropbox_mirror_venv
-CANDIDATE_PYTHON="$REPO_ROOT/.venv/bin/python"
-if [ ! -x "$CANDIDATE_PYTHON" ]; then
-    CANDIDATE_PYTHON="$REPO_ROOT/dropbox_mirror_venv/bin/python"
-fi
-# as a last resort use system python in PATH
-if [ ! -x "$CANDIDATE_PYTHON" ]; then
-    if command -v python3 >/dev/null 2>&1; then
-        CANDIDATE_PYTHON="$(command -v python3)"
-    elif command -v python >/dev/null 2>&1; then
-        CANDIDATE_PYTHON="$(command -v python)"
-    else
-        CANDIDATE_PYTHON=""
-    fi
+# Look for .git folder to detect repo root
+if [ -d "$SCRIPT_DIR/.git" ]; then
+    REPO_ROOT="$SCRIPT_DIR"
+elif [ -d "$SCRIPT_DIR/../.git" ]; then
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+elif [ -d "$HOME/dropbox-zip-mirror-termux/.git" ]; then
+    REPO_ROOT="$HOME/dropbox-zip-mirror-termux"
+else
+    echo "❌ ERROR: Could not detect repository root."
+    echo "Please adjust REPO_ROOT manually in this script."
+    exit 1
 fi
 
-PYTHON="$CANDIDATE_PYTHON"
 LOG_FILE="$REPO_ROOT/sync.log"
 ENV_FILE="$REPO_ROOT/.dropbox_mirror.env"
+
+# --- Detect Python interpreter ---
+if [ -x "$REPO_ROOT/.venv/bin/python" ]; then
+    PYTHON="$REPO_ROOT/.venv/bin/python"
+elif [ -x "$REPO_ROOT/venv/bin/python" ]; then
+    PYTHON="$REPO_ROOT/venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="$(command -v python3)"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON="$(command -v python)"
+else
+    echo "❌ ERROR: No Python interpreter found!"
+    exit 1
+fi
 
 echo "=== Dropbox Mirror Sync ==="
 date
 
+# --- Check config file existence ---
 if [ ! -f "$ENV_FILE" ]; then
     echo "❌ ERROR: Missing config file: $ENV_FILE"
     echo "Run ./setup_termux.sh from the repo root first!"
     exit 1
 fi
 
-if [ -z "$PYTHON" ]; then
-    echo "❌ ERROR: No python executable found. Create a virtualenv at $REPO_ROOT/.venv or ensure python3 is in PATH."
-    exit 1
-fi
-
-if [ ! -x "$PYTHON" ]; then
-    echo "❌ ERROR: Python executable is not usable: $PYTHON"
-    exit 1
-fi
-
-# Run sync and capture logs
+# --- Run sync ---
 {
     echo "[$(date)] Starting sync..."
     "$PYTHON" "$REPO_ROOT/sync_dropbox.py"
