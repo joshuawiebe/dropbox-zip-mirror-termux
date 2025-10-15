@@ -8,6 +8,7 @@ set -euo pipefail
 SCRIPT_PATH="$(realpath "$0")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 
+# Look for .git folder to detect repo root
 if [ -d "$SCRIPT_DIR/.git" ]; then
     REPO_ROOT="$SCRIPT_DIR"
 elif [ -d "$SCRIPT_DIR/../.git" ]; then
@@ -62,7 +63,7 @@ date
 # --- Run sync ---
 {
     echo "[$(date)] Starting sync..."
-    "$PYTHON" "$REPO_ROOT/sync_dropbox.py" 2>&1 | tee -a "$LOG_FILE"
+    "$PYTHON" "$REPO_ROOT/sync_dropbox.py"
     echo "[$(date)] ✅ Sync completed successfully"
 } >>"$LOG_FILE" 2>&1 || {
     echo "[$(date)] ❌ Sync failed" >>"$LOG_FILE"

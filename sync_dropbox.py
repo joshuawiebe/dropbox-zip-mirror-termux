@@ -12,7 +12,7 @@ Core script:
 
 Config is read from: ./.dropbox_mirror.env (repo-local) or ~/.dropbox_mirror.env (fallback).
 If config missing and running interactively, script asks for setup.
-Designed for Termux + venv + Termux:Widget trigger (~/.shortcuts/run-sync.sh) or Termux Job Scheduler.
+Designed for Termux + venv + Termux:Widget trigger (~/.shortcuts/run-sync.sh).
 """
 
 import os
@@ -21,8 +21,10 @@ import shutil
 import hashlib
 import zipfile
 import tempfile
+import re
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlparse
 import requests
 import time
 
@@ -33,8 +35,21 @@ if not ENV_PATH.exists():
     ENV_PATH = Path.home() / ".dropbox_mirror.env"
 
 # ------------------ Helpers ------------------
+ANSI_RE = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')
+C0_RE = re.compile(r'[\x00-\x1F\x7F]')  # control chars
+
+def strip_ansi_and_control(s: str) -> str:
+    """Remove ANSI escape sequences and control characters from a string."""
+    if not isinstance(s, str):
+        return s
+    # First remove ANSI escapes
+    s2 = ANSI_RE.sub('', s)
+    # Then remove other control characters except newline/carriage returns
+    s2 = C0_RE.sub('', s2)
+    return s2.strip()
+
 def read_env(path=ENV_PATH):
-    """Read environment variables from config file"""
+    """Read environment variables from config file and sanitize values"""
     d = {}
     if not Path(path).exists():
         return d
@@ -45,7 +60,10 @@ def read_env(path=ENV_PATH):
                 if not ln or ln.startswith("#") or "=" not in ln:
                     continue
                 k, v = ln.split("=", 1)
-                d[k.strip()] = v.strip()
+                k = k.strip()
+                v = v.strip()
+                v = strip_ansi_and_control(v)
+                d[k] = v
     except Exception as e:
         print(f"Warning: Could not read config file {path}: {e}", flush=True)
     return d
@@ -97,15 +115,27 @@ def expand_path(path_str):
     """Expand ~ and environment variables in path"""
     return str(Path(path_str).expanduser().resolve())
 
+def validate_url(u: str) -> bool:
+    """Basic URL validation using urllib.parse"""
+    try:
+        parsed = urlparse(u)
+        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+    except Exception:
+        return False
+
 # ------------------ Core functions ------------------
 def download_zip(url, out_path):
     """Download Dropbox ZIP file"""
     out_path = Path(expand_path(out_path))
     ensure_dir(out_path.parent)
-    print(f"📥 Downloading ZIP from {url} -> {out_path}", flush=True)
+    safe_url = strip_ansi_and_control(url)
+    print(f"📥 Downloading ZIP from {safe_url} -> {out_path}", flush=True)
+
+    if not validate_url(safe_url):
+        raise ValueError(f"Invalid URL after sanitizing: {safe_url}")
 
     try:
-        with requests.get(url, stream=True, timeout=30) as r:
+        with requests.get(safe_url, stream=True, timeout=60) as r:
             r.raise_for_status()
             total_size = int(r.headers.get("content-length", 0))
             downloaded = 0
@@ -120,8 +150,8 @@ def download_zip(url, out_path):
         print("\n✅ Download finished.", flush=True)
         return out_path
     except Exception as e:
-        print(f"[!] Download failed: {e}", flush=True)
-        raise
+        # Re-raise with cleaned message
+        raise RuntimeError(str(e))
 
 def extract_zip(zip_path, dest_dir):
     """Extract ZIP safely (no path traversal)"""
@@ -144,6 +174,21 @@ def extract_zip(zip_path, dest_dir):
     except Exception as e:
         print(f"[!] Extraction failed: {e}", flush=True)
         raise
+
+def safe_log_write(log_fp, text):
+    """Try to write to log_fp, but fall back to stdout if writing fails."""
+    try:
+        if log_fp:
+            log_fp.write(text)
+            log_fp.flush()
+    except Exception:
+        # Best-effort fallback
+        try:
+            print("LOG-ERROR: failed to write to log file. Outputting instead:", flush=True)
+            print(text, flush=True)
+        except Exception:
+            # last resort, ignore
+            pass
 
 def sync_from_dir(src_dir, target_dir, keep_versions=True, dry_run=False, log_fp=None):
     """Sync files from source to target with SHA256 comparison"""
@@ -173,45 +218,45 @@ def sync_from_dir(src_dir, target_dir, keep_versions=True, dry_run=False, log_fp
                     old_hash = sha256_file(dest_file)
                     if new_hash and old_hash and new_hash == old_hash:
                         skipped += 1
-                        msg = f"⏭ SKIP: {rel} ({counter}/{total_files}) unchanged"
-                        print(msg, flush=True)
-                        if log_fp: log_fp.write(f"{timestamp()} {msg}\n")
+                        msg = f"⏭ SKIP: {rel} ({counter}/{total_files}) unchanged\n"
+                        print(msg.strip(), flush=True)
+                        safe_log_write(log_fp, f"{timestamp()} {msg}")
                         continue
                     else:
                         # Update
                         if dry_run:
                             updated += 1
-                            msg = f"✏️ DRY-UPDATE: {rel} ({counter}/{total_files}) would replace"
+                            msg = f"✏️ DRY-UPDATE: {rel} ({counter}/{total_files}) would replace\n"
                         else:
                             if keep_versions:
                                 ts = timestamp()
                                 archive_path = versions_dir / f"{rel}.{ts}"
                                 ensure_dir(archive_path.parent)
                                 shutil.move(str(dest_file), str(archive_path))
-                                arch_msg = f"🗄 ARCHIVE: {rel} -> .old_versions/{rel}.{ts}"
-                                print(arch_msg, flush=True)
-                                if log_fp: log_fp.write(f"{timestamp()} {arch_msg}\n")
+                                arch_msg = f"🗄 ARCHIVE: {rel} -> .old_versions/{rel}.{ts}\n"
+                                print(arch_msg.strip(), flush=True)
+                                safe_log_write(log_fp, f"{timestamp()} {arch_msg}")
                             shutil.copy2(src_file, dest_file)
                             updated += 1
-                            msg = f"🔄 UPDATE: {rel} ({counter}/{total_files})"
-                        print(msg, flush=True)
-                        if log_fp: log_fp.write(f"{timestamp()} {msg}\n")
+                            msg = f"🔄 UPDATE: {rel} ({counter}/{total_files})\n"
+                        print(msg.strip(), flush=True)
+                        safe_log_write(log_fp, f"{timestamp()} {msg}")
                 else:
                     # New file
                     if dry_run:
                         copied += 1
-                        msg = f"➕ DRY-COPY: {rel} ({counter}/{total_files}) would copy"
+                        msg = f"➕ DRY-COPY: {rel} ({counter}/{total_files}) would copy\n"
                     else:
                         shutil.copy2(src_file, dest_file)
                         copied += 1
-                        msg = f"✅ COPY: {rel} ({counter}/{total_files})"
-                    print(msg, flush=True)
-                    if log_fp: log_fp.write(f"{timestamp()} {msg}\n")
+                        msg = f"✅ COPY: {rel} ({counter}/{total_files})\n"
+                    print(msg.strip(), flush=True)
+                    safe_log_write(log_fp, f"{timestamp()} {msg}")
             except Exception as e:
                 errors += 1
-                msg = f"[!] ERROR processing {rel}: {e}"
-                print(msg, flush=True)
-                if log_fp: log_fp.write(f"{timestamp()} {msg}\n")
+                msg = f"[!] ERROR processing {rel}: {e}\n"
+                print(msg.strip(), flush=True)
+                safe_log_write(log_fp, f"{timestamp()} {msg}")
 
     summary = {
         "total": total_files,
@@ -229,18 +274,11 @@ def main():
 
     cfg = read_env()
 
-    # Detect Termux Job Scheduler
-    RUNNING_JOB = os.environ.get("TERMUX_JOB_ID") is not None
-
     # Interactive config if missing
     if not cfg.get("DROPBOX_URL"):
-        if RUNNING_JOB:
-            print(f"[!] ERROR: Config missing and running under Termux Job Scheduler (job id {os.environ.get('TERMUX_JOB_ID')})", flush=True)
-            return 1
-        elif not is_interactive():
+        if not is_interactive():
             print("[!] ERROR: Config missing and running non-interactively", flush=True)
             return 1
-
         print("💡 Interactive setup (config missing).", flush=True)
         cfg["DROPBOX_URL"] = ask("Dropbox public URL (?dl=1)")
         cfg["DOWNLOAD_PATH"] = ask("Local ZIP path", str(script_dir / "dropbox_latest.zip"))
@@ -257,25 +295,33 @@ def main():
         except Exception as e:
             print(f"[!] Could not save config: {e}", flush=True)
 
-    # Config defaults
-    url = cfg.get("DROPBOX_URL")
-    download_path = cfg.get("DOWNLOAD_PATH", str(script_dir / "dropbox_latest.zip"))
-    target_dir = cfg.get("TARGET_DIR", str(script_dir / "DropboxMirror"))
-    keep_versions = cfg.get("KEEP_VERSIONS", "yes").lower().startswith("y")
-    dry_run = cfg.get("DRY_RUN", "no").lower().startswith("y")
-    log_path = cfg.get("LOG_PATH", str(script_dir / "sync.log"))
+    # Config defaults (sanitize again in case)
+    url = strip_ansi_and_control(cfg.get("DROPBOX_URL", ""))
+    download_path = strip_ansi_and_control(cfg.get("DOWNLOAD_PATH", str(script_dir / "dropbox_latest.zip")))
+    target_dir = strip_ansi_and_control(cfg.get("TARGET_DIR", str(script_dir / "DropboxMirror")))
+    keep_versions = strip_ansi_and_control(cfg.get("KEEP_VERSIONS", "yes")).lower().startswith("y")
+    dry_run = strip_ansi_and_control(cfg.get("DRY_RUN", "no")).lower() in ("1", "true", "yes", "y")
+    log_path = strip_ansi_and_control(cfg.get("LOG_PATH", str(script_dir / "sync.log")))
 
-    # CLI flags
+    # Allow CLI flags
     if "--dry-run" in sys.argv:
         dry_run = True
         print("⚡ Dry run mode enabled via CLI", flush=True)
 
-    # Normalize URL
+    # Normalize URL: strip any dl params and force dl=1
     if not url or "dropbox.com" not in url:
         print("[!] ERROR: DROPBOX_URL missing or invalid", flush=True)
         return 1
-    url = url.replace("&dl=0", "").replace("&dl=1", "").replace("?dl=0", "").replace("?dl=1", "")
+    # remove existing dl params
+    url = re.sub(r'(\?|&)+dl=[01]', '', url)
+    url = url.rstrip('&').rstrip('?')
     url = url + ("&dl=1" if "?" in url else "?dl=1")
+    url = strip_ansi_and_control(url)
+
+    # Validate URL
+    if not validate_url(url):
+        print(f"[!] ERROR: DROPBOX_URL is invalid after sanitizing: {url}", flush=True)
+        return 1
 
     # Expand paths
     download_path = expand_path(download_path)
@@ -290,37 +336,58 @@ def main():
 
     try:
         with open(log_path, "a", encoding="utf-8") as log_fp:
-            log_fp.write(f"{timestamp()} === RUN START ===\n")
-            log_fp.write(f"{timestamp()} URL: {url}\n")
-            log_fp.write(f"{timestamp()} Target: {target_dir}\n")
-            log_fp.write(f"{timestamp()} Dry run: {dry_run}\n")
+            safe_log_write(log_fp, f"{timestamp()} === RUN START ===\n")
+            safe_log_write(log_fp, f"{timestamp()} URL: {url}\n")
+            safe_log_write(log_fp, f"{timestamp()} Target: {target_dir}\n")
+            safe_log_write(log_fp, f"{timestamp()} Dry run: {dry_run}\n")
 
             # Download
-            zip_path = download_zip(url, download_path)
-            log_fp.write(f"{timestamp()} Downloaded to: {zip_path}\n")
+            try:
+                zip_path = download_zip(url, download_path)
+                safe_log_write(log_fp, f"{timestamp()} Downloaded to: {zip_path}\n")
+            except Exception as e:
+                msg = f"Download failed: {e}"
+                print(f"[!] {msg}", flush=True)
+                safe_log_write(log_fp, f"{timestamp()} ERROR: {msg}\n")
+                return 1
 
             # Extract
             tmpdir = Path(tempfile.mkdtemp(prefix="dbx_sync_"))
-            extract_zip(zip_path, tmpdir)
-            log_fp.write(f"{timestamp()} Extracted to: {tmpdir}\n")
+            try:
+                extract_zip(zip_path, tmpdir)
+                safe_log_write(log_fp, f"{timestamp()} Extracted to: {tmpdir}\n")
+            except Exception as e:
+                msg = f"Extraction failed: {e}"
+                print(f"[!] {msg}", flush=True)
+                safe_log_write(log_fp, f"{timestamp()} ERROR: {msg}\n")
+                try:
+                    shutil.rmtree(tmpdir)
+                except Exception:
+                    pass
+                return 2
 
             # Sync
-            print(f"🔄 Syncing files...", flush=True)
-            summary = sync_from_dir(tmpdir, target_dir, keep_versions, dry_run, log_fp)
-            log_fp.write(f"{timestamp()} SYNC COMPLETE: {summary}\n")
-            print(f"✅ Sync complete: {summary}", flush=True)
+            try:
+                print(f"🔄 Syncing files...", flush=True)
+                summary = sync_from_dir(tmpdir, target_dir, keep_versions, dry_run, log_fp)
+                safe_log_write(log_fp, f"{timestamp()} SYNC COMPLETE: {summary}\n")
+                print(f"✅ Sync complete: {summary}", flush=True)
+            except Exception as e:
+                msg = f"Sync failed: {e}"
+                print(f"[!] {msg}", flush=True)
+                safe_log_write(log_fp, f"{timestamp()} ERROR: {msg}\n")
 
             # Cleanup
             try:
                 if Path(zip_path).exists():
                     Path(zip_path).unlink()
-                    log_fp.write(f"{timestamp()} Deleted ZIP: {zip_path}\n")
+                    safe_log_write(log_fp, f"{timestamp()} Deleted ZIP: {zip_path}\n")
                 shutil.rmtree(tmpdir)
-                log_fp.write(f"{timestamp()} Deleted temp dir: {tmpdir}\n")
+                safe_log_write(log_fp, f"{timestamp()} Deleted temp dir: {tmpdir}\n")
             except Exception as e:
-                log_fp.write(f"{timestamp()} WARNING: Cleanup failed: {e}\n")
+                safe_log_write(log_fp, f"{timestamp()} WARNING: Cleanup failed: {e}\n")
 
-            log_fp.write(f"{timestamp()} === RUN END ===\n")
+            safe_log_write(log_fp, f"{timestamp()} === RUN END ===\n")
     except Exception as e:
         print(f"[!] ERROR: Could not write to log {log_path}: {e}", flush=True)
         return 3
