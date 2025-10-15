@@ -48,9 +48,7 @@ fi
 # Function to expand paths like the Python script does
 expand_path() {
     local path="$1"
-    # Replace ~ with $HOME
     path="${path/#\~/$HOME}"
-    # Convert to absolute path
     if [[ "$path" = /* ]]; then
         echo "$path"
     else
@@ -71,30 +69,29 @@ fi
 
 # Show what will be removed
 echo "Files to be removed:"
-echo " â Virtual environment: $VENV_DIR"
-echo " â Configuration file: $ENV_FILE"
-echo " â Run script: $RUN_SH"
-echo " â Widget shortcut: $SHORTCUT_LINK"
+echo " ✅ Virtual environment: $VENV_DIR"
+echo " ✅ Configuration file: $ENV_FILE"
+echo " ✅ Run script: $RUN_SH"
+echo " ✅ Widget shortcut: $SHORTCUT_LINK"
 
 if [ -f "$LOG_FILE" ]; then
-    echo " â Default log file: $LOG_FILE"
+    echo " ✅ Default log file: $LOG_FILE"
 fi
 if [ -n "$CUSTOM_LOG_PATH" ] && [ "$CUSTOM_LOG_PATH" != "$LOG_FILE" ] && [ -f "$CUSTOM_LOG_PATH" ]; then
-    echo " â Custom log file: $CUSTOM_LOG_PATH"
+    echo " ✅ Custom log file: $CUSTOM_LOG_PATH"
 fi
-
 if [ -f "$ZIP_FILE" ]; then
-    echo " â Default ZIP file: $ZIP_FILE"
+    echo " ✅ Default ZIP file: $ZIP_FILE"
 fi
 if [ -n "$CUSTOM_DOWNLOAD_PATH" ] && [ "$CUSTOM_DOWNLOAD_PATH" != "$ZIP_FILE" ] && [ -f "$CUSTOM_DOWNLOAD_PATH" ]; then
-    echo " â Custom ZIP file: $CUSTOM_DOWNLOAD_PATH"
+    echo " ✅ Custom ZIP file: $CUSTOM_DOWNLOAD_PATH"
 fi
 
 if [ -d "$TARGET_DIR_DEFAULT" ]; then
-    echo " ? Default target folder: $TARGET_DIR_DEFAULT (will ask)"
+    echo " ⚠️  Default target folder: $TARGET_DIR_DEFAULT (will ask)"
 fi
 if [ -n "$CUSTOM_TARGET_DIR" ] && [ "$CUSTOM_TARGET_DIR" != "$TARGET_DIR_DEFAULT" ] && [ -d "$CUSTOM_TARGET_DIR" ]; then
-    echo " ? Custom target folder: $CUSTOM_TARGET_DIR (will ask)"
+    echo " ⚠️  Custom target folder: $CUSTOM_TARGET_DIR (will ask)"
 fi
 
 echo
@@ -107,7 +104,7 @@ fi
 echo
 echo "Removing files..."
 
-# Remove symlink/wrapper
+# Remove symlink or wrapper shortcut
 if [ -L "$SHORTCUT_LINK" ]; then
     echo "Removing symlink: $SHORTCUT_LINK"
     rm -f "$SHORTCUT_LINK"
@@ -143,7 +140,6 @@ if [ -f "$LOG_FILE" ]; then
     echo "Removing default log: $LOG_FILE"
     rm -f "$LOG_FILE"
 fi
-
 if [ -n "$CUSTOM_LOG_PATH" ] && [ "$CUSTOM_LOG_PATH" != "$LOG_FILE" ] && [ -f "$CUSTOM_LOG_PATH" ]; then
     echo "Removing custom log: $CUSTOM_LOG_PATH"
     rm -f "$CUSTOM_LOG_PATH"
@@ -154,13 +150,12 @@ if [ -f "$ZIP_FILE" ]; then
     echo "Removing default ZIP: $ZIP_FILE"
     rm -f "$ZIP_FILE"
 fi
-
 if [ -n "$CUSTOM_DOWNLOAD_PATH" ] && [ "$CUSTOM_DOWNLOAD_PATH" != "$ZIP_FILE" ] && [ -f "$CUSTOM_DOWNLOAD_PATH" ]; then
     echo "Removing custom ZIP: $CUSTOM_DOWNLOAD_PATH"
     rm -f "$CUSTOM_DOWNLOAD_PATH"
 fi
 
-# Handle target directories (ask user)
+# Handle target directories
 handle_target_removal() {
     local target_dir="$1"
     local description="$2"
@@ -185,18 +180,19 @@ handle_target_removal() {
 
 # Remove target directories
 handle_target_removal "$TARGET_DIR_DEFAULT" "default target folder"
-
 if [ -n "$CUSTOM_TARGET_DIR" ] && [ "$CUSTOM_TARGET_DIR" != "$TARGET_DIR_DEFAULT" ]; then
     handle_target_removal "$CUSTOM_TARGET_DIR" "custom target folder"
 fi
 
 echo
 echo "=== Cleanup Complete ==="
-echo "â All runtime files have been removed"
+echo "✅ All runtime files have been removed"
 echo
 echo "Repository folder is still here: $REPO_DIR"
 echo "You can:"
-echo "  â¢ Remove entire repo:  rm -rf '$REPO_DIR'"
-echo "  â¢ Reinstall:          bash setup_termux.sh"
-echo "  â¢ Clone fresh:        git pull && bash setup_termux.sh"
+echo "  • Remove entire repo:  rm -rf '$REPO_DIR'"
+echo "  • Reinstall:          bash setup_termux.sh"
+echo "  • Clone fresh:        git pull && bash setup_termux.sh"
+echo "=================================="
+echo "Thank you for using Dropbox Mirror!"
 echo "=================================="

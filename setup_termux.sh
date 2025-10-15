@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # repo-local setup: venv, env, run-sync.sh (in-repo), symlink for Termux widget
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 VENV_DIR="$REPO_DIR/.venv"
 ENV_FILE="$REPO_DIR/.dropbox_mirror.env"
 SHORTCUT_LINK="$HOME/.shortcuts/run-sync.sh"
@@ -101,7 +101,7 @@ if [ ! -f "$ENV_FILE" ]; then
         DROPBOX_URL="${DROPBOX_URL/&dl=0/}"
         DROPBOX_URL="${DROPBOX_URL/&dl=1/}"
         if [[ "$DROPBOX_URL" == *\?* ]]; then
-            DROPBOX_URL="$DROPBOX_URL&dl=1"
+            DROPBOX_URL="${DROPBOX_URL%%\?*}?dl=1"
         else
             DROPBOX_URL="$DROPBOX_URL?dl=1"
         fi
@@ -137,6 +137,12 @@ if [ ! -f "$ENV_FILE" ]; then
     read -p "Log file path [$DEFAULT_LOG]: " LOG_PATH
     LOG_PATH="${LOG_PATH:-$DEFAULT_LOG}"
 
+    # Convert yes/no to 0/1 for dry run
+    DRY_NUM=0
+    if [[ "$DRY" =~ ^[Yy][Ee]?[Ss]?$ ]]; then
+        DRY_NUM=1
+    fi
+
     # Write configuration file
     cat > "$ENV_FILE" <<EOF
 # Dropbox Mirror Configuration
@@ -146,7 +152,7 @@ DROPBOX_URL=$DROPBOX_URL
 DOWNLOAD_PATH=$DOWNLOAD_PATH
 TARGET_DIR=$TARGET_DIR
 KEEP_VERSIONS=$KEEP_V
-DRY_RUN=$DRY
+DRY_RUN=$DRY_NUM
 LOG_PATH=$LOG_PATH
 VENV_DIR=$VENV_DIR
 EOF
@@ -164,7 +170,7 @@ if [ ! -f "$TEMPLATE" ]; then
 fi
 
 # Render template with actual paths
-sed "s|__VENV_DIR__|$VENV_DIR|g; s|__SCRIPT_PATH__|$REPO_DIR/sync_dropbox.py|g; s|__LOG_PATH__|$REPO_DIR/sync.log|g" "$TEMPLATE" > "$RUN_SH"
+sed "s|__VENV_DIR__|$VENV_DIR|g; s|__SCRIPT_PATH__|$REPO_DIR/sync_dropbox.py|g; s|__LOG_PATH__|$LOG_PATH|g" "$TEMPLATE" > "$RUN_SH"
 chmod +x "$RUN_SH"
 echo "✅ Created executable run script: $RUN_SH"
 
@@ -198,7 +204,7 @@ else
 # Termux widget wrapper for Dropbox Mirror
 export TERMUX_WIDGET=1
 cd "$REPO_DIR" || exit 1
-"$VENV_DIR/bin/python" "$REPO_DIR/sync_dropbox.py" >> "$REPO_DIR/sync.log" 2>&1
+"$VENV_DIR/bin/python" "$REPO_DIR/sync_dropbox.py" 2>&1 | tee -a "$LOG_PATH"
 EOF
     chmod +x "$SHORTCUT_LINK"
     echo "✅ Created widget wrapper: $SHORTCUT_LINK"
@@ -248,11 +254,11 @@ echo "🔧 Manual Usage:"
 echo "   Test run:       $RUN_SH"
 echo "   Dry run:        ./.venv/bin/python ./sync_dropbox.py --dry-run"
 echo "   Edit config:    nano $ENV_FILE"
-echo "   View logs:      tail -f $REPO_DIR/sync.log"
+echo "   View logs:      tail -f $LOG_PATH"
 echo "   Uninstall:      ./remove_installation.sh"
 echo
 echo "📋 Troubleshooting:"
-echo "   • Check logs for errors: tail -f $REPO_DIR/sync.log"
+echo "   • Check logs for errors: tail -f $LOG_PATH"
 echo "   • Verify storage permissions: termux-setup-storage"
 echo "   • Ensure Dropbox URL is a public shared link (dl param will be normalized)"
 echo "   • Test manually before using widget"

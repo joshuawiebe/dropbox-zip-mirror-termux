@@ -2,13 +2,12 @@
 set -euo pipefail
 
 # === Dropbox Mirror Sync Script ===
-# Works both as standalone script and as Termux shortcut.
+# Works as Termux shortcut, Job Scheduler task or manual execution.
 
 # --- Detect repo root automatically ---
 SCRIPT_PATH="$(realpath "$0")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 
-# Look for .git folder to detect repo root
 if [ -d "$SCRIPT_DIR/.git" ]; then
     REPO_ROOT="$SCRIPT_DIR"
 elif [ -d "$SCRIPT_DIR/../.git" ]; then
@@ -21,11 +20,22 @@ else
     exit 1
 fi
 
-LOG_FILE="$REPO_ROOT/sync.log"
 ENV_FILE="$REPO_ROOT/.dropbox_mirror.env"
 
-# --- Detect Python interpreter ---
-if [ -x "$REPO_ROOT/.venv/bin/python" ]; then
+# --- Load configuration ---
+if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ ERROR: Missing config file: $ENV_FILE"
+    echo "Run ./setup_termux.sh from the repo root first!"
+    exit 1
+fi
+
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+
+# --- Determine Python interpreter ---
+if [ -n "${VENV_DIR:-}" ] && [ -x "$VENV_DIR/bin/python" ]; then
+    PYTHON="$VENV_DIR/bin/python"
+elif [ -x "$REPO_ROOT/.venv/bin/python" ]; then
     PYTHON="$REPO_ROOT/.venv/bin/python"
 elif [ -x "$REPO_ROOT/venv/bin/python" ]; then
     PYTHON="$REPO_ROOT/venv/bin/python"
@@ -38,20 +48,21 @@ else
     exit 1
 fi
 
+# --- Use log path from config ---
+LOG_FILE="${LOG_PATH:-$REPO_ROOT/sync.log}"
+
+# --- Termux Job Scheduler support ---
+if [ -n "${TERMUX_JOB_UUID:-}" ]; then
+    echo "🔹 Running as scheduled job (UUID: $TERMUX_JOB_UUID)"
+fi
+
 echo "=== Dropbox Mirror Sync ==="
 date
-
-# --- Check config file existence ---
-if [ ! -f "$ENV_FILE" ]; then
-    echo "❌ ERROR: Missing config file: $ENV_FILE"
-    echo "Run ./setup_termux.sh from the repo root first!"
-    exit 1
-fi
 
 # --- Run sync ---
 {
     echo "[$(date)] Starting sync..."
-    "$PYTHON" "$REPO_ROOT/sync_dropbox.py"
+    "$PYTHON" "$REPO_ROOT/sync_dropbox.py" 2>&1 | tee -a "$LOG_FILE"
     echo "[$(date)] ✅ Sync completed successfully"
 } >>"$LOG_FILE" 2>&1 || {
     echo "[$(date)] ❌ Sync failed" >>"$LOG_FILE"

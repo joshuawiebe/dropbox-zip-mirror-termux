@@ -11,6 +11,7 @@ A Termux-based tool that downloads a public Dropbox folder ZIP (`?dl=1`), extrac
 - **Safe operation**: Dry-run mode, path traversal protection, error handling
 - **Simple cleanup**: `remove_installation.sh` removes all runtime artifacts
 - **Minimal dependencies**: Python + `requests` library only
+- **Real-time feedback**: Prints live progress messages for major steps, both in Termux and log file
 
 ## Quick Install (Termux)
 
@@ -38,12 +39,15 @@ A Termux-based tool that downloads a public Dropbox folder ZIP (`?dl=1`), extrac
    ```
 
    This will:
+
    - Create Python venv at `./.venv`
    - Install `requests` into the venv
    - Interactively configure `./.dropbox_mirror.env`
-   - Create `./run-sync.sh` and link it to `~/.shortcuts/run-sync.sh`
+   - Ask if you want a **widget** or **job scheduler**
+   - Create `./run-sync.sh` and link it to `~/.shortcuts/run-sync.sh` (if widget selected)
 
 5. **Add Termux:Widget** to your home screen and select `run-sync`. One tap triggers the sync!
+   You can **watch output live** even from the widget since major progress steps are printed immediately.
 
 ## Manual Usage
 
@@ -81,12 +85,13 @@ Edit manually: `nano ./.dropbox_mirror.env` or re-run `bash setup_termux.sh`
 
 ## How It Works
 
-1. **Download**: Fetches your Dropbox ZIP file using the public link
-2. **Extract**: Safely extracts to temporary directory (with path traversal protection)
-3. **Compare**: Uses SHA256 hashes to identify new/changed files
-4. **Sync**: Copies only new files, updates changed files
-5. **Archive**: Optionally keeps old versions in `.old_versions/` folder
-6. **Cleanup**: Removes temporary files and ZIP
+1. **Downloading…** Fetches your Dropbox ZIP file
+2. **Extracting…** Safely extracts to a temporary directory (with path traversal protection)
+3. **Comparing…** Uses SHA256 hashes to identify new/changed files
+4. **Syncing…** Copies new files, updates changed files, archives old versions if configured
+   Progress counters like `Copied 4/25 files…` appear live
+5. **Done ✅** Cleans up temporary files and ZIP
+   All major steps are printed **immediately** for real-time feedback, even from the widget
 
 ## Uninstall
 
@@ -106,8 +111,8 @@ Remove all runtime artifacts (keeps your synced files):
 
 **Automation:**
 
-- Use Termux:Tasker for scheduled syncs
-- Add multiple Dropbox sources by creating separate repo folders
+- Use Termux:Tasker or Job Scheduler for periodic syncs
+- Multiple Dropbox sources can be handled by creating separate repo folders
 - Chain with other scripts using the run script
 
 **Monitoring:**
@@ -135,14 +140,12 @@ grep "SUMMARY" ./sync.log
 ### Permission errors
 
 ```bash
-# Re-grant storage permissions
 termux-setup-storage
 ```
 
 ### Missing dependencies
 
 ```bash
-# Recreate environment
 ./remove_installation.sh
 bash setup_termux.sh
 ```
@@ -165,7 +168,7 @@ bash setup_termux.sh
 
 **File structure:**
 
-``` tree
+```text
 dropbox-zip-mirror-termux/
 ├── sync_dropbox.py           # Main sync script
 ├── setup_termux.sh           # Interactive setup
@@ -175,19 +178,19 @@ dropbox-zip-mirror-termux/
 │   └── run-sync.sh.template  # Widget script template
 ├── .dropbox_mirror.env       # Config (created by setup)
 ├── .venv/                    # Python venv (created by setup)
-├── sync.log          # Log file (created at runtime)
-└── DropboxMirror/           # Default sync target (created at runtime)
+├── sync.log                  # Log file (created at runtime)
+└── DropboxMirror/            # Default sync target (created at runtime)
 ```
 
 **Key improvements in this version:**
 
-- ✅ Fixed config file path resolution (repo-local first, then home)
+- ✅ Real-time progress output for major steps
+- ✅ Config path resolution (repo-local first, then home)
 - ✅ Non-interactive mode detection for widget usage
-- ✅ Proper path traversal protection during ZIP extraction
+- ✅ Safe ZIP extraction (path traversal protection)
+- ✅ SHA256 comparison + optional archiving
 - ✅ Robust error handling and logging
-- ✅ Progress indicators for large downloads
-- ✅ Better path expansion (handles `~` and environment variables)
-- ✅ Comprehensive setup validation and user feedback
+- ✅ Progress counters for multiple files
 
 ## Security Notes
 
@@ -199,11 +202,11 @@ dropbox-zip-mirror-termux/
 
 ## Requirements
 
-- **Termux** (Android terminal emulator)
-- **Python 3** (`pkg install python`)
-- **Git** (`pkg install git`)
-- **Termux:Widget** (for one-tap sync)
-- **Storage permissions** (`termux-setup-storage`)
+- Termux (Android)
+- Python 3 (`pkg install python`)
+- Git (`pkg install git`)
+- Termux:Widget (optional)
+- Storage permissions (`termux-setup-storage`)
 
 ## License
 
@@ -211,11 +214,7 @@ MIT License - see `LICENSE` file
 
 ## Contributing
 
-Improvements welcome! Please:
-
 1. Fork the repository
 2. Create a feature branch
 3. Test thoroughly on Termux
 4. Submit a pull request with clear description
-
-Keep changes focused and document any behavior modifications.
