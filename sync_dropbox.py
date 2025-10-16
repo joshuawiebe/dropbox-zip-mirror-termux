@@ -2,23 +2,21 @@
 """
 sync_dropbox.py
 
-Core script:
-- Downloads Dropbox public ZIP (?dl=1) to DOWNLOAD_PATH
-- Extracts ZIP to a temporary directory
-- Compares files in temp vs TARGET_DIR using SHA256
-- Copies new files; updates changed files (and archives old versions if configured)
-- Deletes the ZIP and temporary extraction folder
-- Writes a concise log and prints summary in real-time with progress bars
+Dropbox ZIP Mirror Sync Script
 
-Config is read from: ./.dropbox_mirror.env (repo-local) or ~/.dropbox_mirror.env (fallback).
-If config missing and running interactively, script asks for setup.
-Designed for Termux + venv + Termux:Widget trigger (~/.shortcuts/run-sync.sh).
+Features:
+- Downloads Dropbox public ZIP (?dl=1)
+- Extracts ZIP safely
+- Compares files via SHA256
+- Copies new files, updates changed files, archives old versions if enabled
+- Writes logs to file and prints progress in console
+- Dynamic progress bars with percentage, speed, and ETA
+- Dry-run mode supported
+- Interactive setup if config missing
 
-New feature in this version:
-- Dynamic progress bars for download, extraction, and sync
-- Percentage info and ETA for download
-- Improved logging with human-readable timestamps
-- Summary table at the end of sync
+Intended usage:
+- Termux widget, Job Scheduler, or manual execution
+- Config: ./.dropbox_mirror.env (repo) or ~/.dropbox_mirror.env (fallback)
 """
 
 import os
@@ -42,10 +40,10 @@ if not ENV_PATH.exists():
 
 # ------------------ Helpers ------------------
 ANSI_RE = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')
-C0_RE = re.compile(r'[\x00-\x1F\x7F]')  # control chars
+C0_RE = re.compile(r'[\x00-\x1F\x7F]')  # Control characters
 
 def strip_ansi_and_control(s: str) -> str:
-    """Remove ANSI escape sequences and control characters from a string."""
+    """Remove ANSI escape sequences and control characters."""
     if not isinstance(s, str):
         return s
     s2 = ANSI_RE.sub('', s)
@@ -53,7 +51,7 @@ def strip_ansi_and_control(s: str) -> str:
     return s2.strip()
 
 def read_env(path=ENV_PATH):
-    """Read environment variables from config file and sanitize values"""
+    """Read environment variables from config file."""
     d = {}
     if not Path(path).exists():
         return d
@@ -70,22 +68,22 @@ def read_env(path=ENV_PATH):
     return d
 
 def ask(prompt, default=None):
-    """Interactive prompt with optional default"""
+    """Interactive prompt with optional default."""
     if default:
         res = input(f"{prompt} [{default}]: ").strip()
         return res if res else default
     return input(f"{prompt}: ").strip()
 
 def timestamp(fmt="%Y-%m-%d %H:%M:%S"):
-    """Return human-readable timestamp string"""
+    """Return human-readable timestamp string."""
     return datetime.now().strftime(fmt)
 
 def ensure_dir(p):
-    """Ensure directory exists"""
+    """Ensure directory exists."""
     Path(p).mkdir(parents=True, exist_ok=True)
 
 def sha256_file(path):
-    """Compute SHA256 hash of file"""
+    """Compute SHA256 hash of file."""
     h = hashlib.sha256()
     try:
         with open(path, "rb") as f:
@@ -96,28 +94,16 @@ def sha256_file(path):
         print(f"Error hashing file {path}: {e}", flush=True)
         return None
 
-def sha256_fileobj(fp):
-    """Compute SHA256 hash of open file object"""
-    h = hashlib.sha256()
-    try:
-        for chunk in iter(lambda: fp.read(1024*1024), b""):
-            h.update(chunk)
-        fp.seek(0)
-        return h.hexdigest()
-    except Exception as e:
-        print(f"Error hashing file object: {e}", flush=True)
-        return None
-
 def is_interactive():
-    """Check if script runs interactively (not widget)"""
+    """Check if running interactively (not a widget)."""
     return sys.stdin.isatty() and os.environ.get("TERMUX_WIDGET") != "1"
 
 def expand_path(path_str):
-    """Expand ~ and environment variables in path"""
+    """Expand ~ and environment variables in path."""
     return str(Path(path_str).expanduser().resolve())
 
 def validate_url(u: str) -> bool:
-    """Basic URL validation using urllib.parse"""
+    """Basic URL validation."""
     try:
         parsed = urlparse(u)
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
@@ -125,7 +111,7 @@ def validate_url(u: str) -> bool:
         return False
 
 def print_progress_bar(current, total, prefix="", length=40, speed=None, eta=None):
-    """Print a dynamic progress bar in terminal"""
+    """Print a dynamic progress bar in the terminal."""
     percent = current / total if total else 0
     filled_length = int(length * percent)
     bar = "█" * filled_length + "-" * (length - filled_length)
@@ -139,7 +125,7 @@ def print_progress_bar(current, total, prefix="", length=40, speed=None, eta=Non
         print()
 
 def safe_log_write(log_fp, text):
-    """Try to write to log_fp, fallback to stdout if fails"""
+    """Write to log file or stdout if log fails."""
     try:
         if log_fp:
             log_fp.write(text)
@@ -153,7 +139,7 @@ def safe_log_write(log_fp, text):
 
 # ------------------ Core functions ------------------
 def download_zip(url, out_path):
-    """Download Dropbox ZIP file with progress bar, speed and ETA"""
+    """Download Dropbox ZIP with progress, speed, and ETA."""
     out_path = Path(expand_path(out_path))
     ensure_dir(out_path.parent)
     safe_url = strip_ansi_and_control(url)
@@ -184,7 +170,7 @@ def download_zip(url, out_path):
         raise RuntimeError(str(e))
 
 def extract_zip(zip_path, dest_dir):
-    """Extract ZIP safely (no path traversal) with progress"""
+    """Extract ZIP safely with progress."""
     dest_dir = Path(expand_path(dest_dir))
     ensure_dir(dest_dir)
     print(f"📦 Extracting ZIP {zip_path} -> {dest_dir}", flush=True)
@@ -193,6 +179,7 @@ def extract_zip(zip_path, dest_dir):
         with zipfile.ZipFile(str(zip_path), "r") as z:
             safe_members = []
             for zi in z.infolist():
+                # Avoid path traversal
                 if ".." in Path(zi.filename).parts or zi.filename.startswith("/"):
                     print(f"[!] Skipping suspicious entry: {zi.filename}", flush=True)
                     continue
@@ -208,7 +195,7 @@ def extract_zip(zip_path, dest_dir):
         raise
 
 def sync_from_dir(src_dir, target_dir, keep_versions=True, dry_run=False, log_fp=None):
-    """Sync files with progress, percent, logging, and summary"""
+    """Sync files with progress, logging, and summary."""
     src_dir = Path(expand_path(src_dir))
     target_dir = Path(expand_path(target_dir))
     versions_dir = target_dir / ".old_versions"
@@ -288,7 +275,7 @@ def main():
 
     cfg = read_env()
 
-    # Interactive config if missing
+    # Interactive setup if missing
     if not cfg.get("DROPBOX_URL") and is_interactive():
         print("💡 Interactive setup (config missing).", flush=True)
         cfg["DROPBOX_URL"] = ask("Dropbox public URL (?dl=1)")
@@ -341,6 +328,7 @@ def main():
             safe_log_write(log_fp, f"{timestamp()} Target: {target_dir}\n")
             safe_log_write(log_fp, f"{timestamp()} Dry run: {dry_run}\n")
 
+            # --- Download ZIP ---
             try:
                 zip_path = download_zip(url, download_path)
                 safe_log_write(log_fp, f"{timestamp()} Downloaded to: {zip_path}\n")
@@ -350,6 +338,7 @@ def main():
                 safe_log_write(log_fp, f"{timestamp()} ERROR: {msg}\n")
                 return 1
 
+            # --- Extract ZIP ---
             tmpdir = Path(tempfile.mkdtemp(prefix="dbx_sync_"))
             try:
                 extract_zip(zip_path, tmpdir)
@@ -361,6 +350,7 @@ def main():
                 shutil.rmtree(tmpdir, ignore_errors=True)
                 return 2
 
+            # --- Sync files ---
             try:
                 print(f"🔄 Syncing files...", flush=True)
                 summary = sync_from_dir(tmpdir, target_dir, keep_versions, dry_run, log_fp)
@@ -370,6 +360,7 @@ def main():
                 print(f"[!] {msg}", flush=True)
                 safe_log_write(log_fp, f"{timestamp()} ERROR: {msg}\n")
 
+            # --- Cleanup ---
             try:
                 if Path(zip_path).exists():
                     Path(zip_path).unlink()
